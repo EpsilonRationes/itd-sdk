@@ -39,7 +39,7 @@ fetch(c.token, 'метод', 'эндпоинт', {'данные': 'данные'
 Из методов поддерживается `get`, `post`, `put` итд, которые есть в `requests`
 К названию эндпоинта добавляется домен итд и `api`, то есть в этом примере отпарвится `https://xn--d1ah4a.com/api/эндпоинт`.
 
-> ![INFO]
+> [!INFO]
 > `xn--d1ah4a.com` - punycode от "итд.com"
 
 ## прочее
@@ -47,4 +47,4 @@ fetch(c.token, 'метод', 'эндпоинт', {'данные': 'данные'
 Идея (и часть эндпоинтов): https://github.com/FriceKa/ITD-SDK-js
  - По сути этот проект является реворком, просто на другом языке
 
-Автор: [SizedBox](https://xn--d1ah4a.com/SizedBox) (в итд) [@desicars](https://t.me/desicars) (в тг)
+Автор: [itd_sdk](https://xn--d1ah4a.com/itd_sdk) (в итд) [@desicars](https://t.me/desicars) (в тг)

@@ -3,8 +3,9 @@ from requests import Session
 s = Session()
 
 
-def fetch(token: str, method: str, url: str, params: dict = {}):
-    res = eval(f's.{method}')(f'https://xn--d1ah4a.com/api/{url}', timeout=20, params=params, headers={
+def fetch(token: str, method: str, url: str, params: dict = {}, files: list = []):
+    base = f'https://xn--d1ah4a.com/api/{url}'
+    headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3",
         "Accept-Encoding": "gzip, deflate, br, zstd",
@@ -19,7 +20,13 @@ def fetch(token: str, method: str, url: str, params: dict = {}):
         "Pragma": "no-cache",
         "Cache-Control": "no-cache",
         "TE": "trailers"
-    })
+    }
+    method = method.lower()
+    if method == "get":
+        res = s.get(base, timeout=20, params=params, headers=headers)
+    else:
+        res = s.request(method.upper(), base, timeout=20, json=params, headers=headers, files=files)
+
     res.raise_for_status()
     return res.json()
 

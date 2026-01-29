@@ -4,7 +4,7 @@ s = Session()
 
 
 def fetch(token: str, method: str, url: str, params: dict = {}):
-    res = eval(f's.{method}')(f'https://итд.com/api/{url}', params=params, headers={
+    res = eval(f's.{method}')(f'https://xn--d1ah4a.com/api/{url}', timeout=20, params=params, headers={
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3",
         "Accept-Encoding": "gzip, deflate, br, zstd",
@@ -22,3 +22,34 @@ def fetch(token: str, method: str, url: str, params: dict = {}):
     })
     res.raise_for_status()
     return res.json()
+
+def set_cookies(cookies: str):
+    for cookie in cookies.split('; '):
+        s.cookies.set(cookie.split('=')[0], cookie.split('=')[-1], path='/', domain='xn--d1ah4a.com.com')
+
+def refresh_auth(cookies: str):
+    print(s.cookies.get_dict())
+    res = s.post(f'https://xn--d1ah4a.com/api/v1/auth/refresh', timeout=10, headers={
+        "Host": "xn--d1ah4a.com",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0",
+        "Accept": "*/*",
+        "Accept-Language": "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Referer": "https://xn--d1ah4a.com/",
+        "Content-Type": "application/json",
+        "Origin": "https://xn--d1ah4a.com",
+        "Sec-GPC": "1",
+        "Connection": "keep-alive",
+        "Cookie": cookies,
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "Priority": "u=4",
+        "Pragma": "no-cache",
+        "Cache-Control": "no-cache",
+        "Content-Length": "0",
+        "TE": "trailers",
+    })
+    res.raise_for_status()
+    print(res.text)
+    return res.json()['accessToken']

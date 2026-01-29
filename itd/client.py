@@ -5,11 +5,25 @@ from itd.notifications import get_notifications, mark_as_read, mark_all_as_read,
 from itd.posts import create_post, get_posts, get_post, edit_post, delete_post, pin_post, repost, view_post
 from itd.reports import report
 from itd.search import search
+from itd.request import refresh_auth, set_cookies
 
 
 class Client:
-    def __init__(self, token: str):
-        self.token = token.replace('Bearer ', '')
+    def __init__(self, token: str | None, cookies: str | None = None):
+        self.cookies = cookies
+
+        if token:
+            self.token = token.replace('Bearer ', '')
+        elif self.cookies:
+            self.refresh_auth()
+        else:
+            raise ValueError('Provide token or cookie')
+
+    def refresh_auth(self):
+        if self.cookies:
+            self.token = refresh_auth(self.cookies)
+        else:
+            print('no cookies!')
 
     def get_user(self, username: str) -> dict:
         return get_user(self.token, username)

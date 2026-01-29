@@ -17,6 +17,3 @@ def unlike_comment(token: str, comment_id: str):
 
 def delete_comment(token: str, comment_id: str):
     return fetch(token, 'delete', f'comments/{comment_id}')
-
-def update_comment(token: str, comment_id: str, content: str):
-    return fetch(token, 'put', f'comments/{comment_id}', {'content': content})

@@ -3,6 +3,8 @@ from itd.comments import get_comments, add_comment, delete_comment, like_comment
 from itd.hashtags import get_hastags, get_posts_by_hastag
 from itd.notifications import get_notifications, mark_as_read, mark_all_as_read, get_unread_notifications_count
 from itd.posts import create_post, get_posts, get_post, edit_post, delete_post, pin_post, repost, view_post
+from itd.reports import report
+
 
 class Client:
     def __init__(self, token: str):
@@ -74,3 +76,16 @@ class Client:
 
     def view_post(self, id: str):
         return view_post(self.token, id)
+
+
+    def report(self, id: str, type: str = 'post', reason: str = 'other', description: str = ''):
+        return report(id, type, reason, description)
+
+    def report_user(self, id: str, reason: str = 'other', description: str = ''):
+        return report(id, 'user', reason, description)
+
+    def report_post(self, id: str, reason: str = 'other', description: str = ''):
+        return report(id, 'post', reason, description)
+
+    def report_comment(self, id: str, reason: str = 'other', description: str = ''):
+        return report(id, 'comment', reason, description)

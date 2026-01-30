@@ -18,7 +18,7 @@ def get_posts(token: str, username: str | None = None, limit: int = 20, cursor: 
     if tab:
         data['tab'] = tab
 
-    return fetch(token, 'get', 'posts', data)
+    return fetch(token, 'get', 'posts', data)['data']
 
 def get_post(token: str, id: str):
     return fetch(token, 'get', f'posts/{id}')

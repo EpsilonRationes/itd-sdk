@@ -14,6 +14,7 @@ from itd.routes.search import search
 from itd.routes.files import upload_file
 from itd.routes.auth import refresh_token, change_password, logout
 from itd.routes.verification import verificate, get_verification_status
+from itd.request import set_cookies
 
 
 def refresh_on_error(func):
@@ -35,6 +36,7 @@ class Client:
         if token:
             self.token = token.replace('Bearer ', '')
         elif self.cookies:
+            set_cookies(self.cookies)
             self.refresh_auth()
         else:
             raise ValueError('Provide token or cookie')

@@ -13,7 +13,7 @@ class UserPrivacy(BaseModel):
 
 class UserProfileUpdate(BaseModel):
     id: UUID
-    username: str
+    username: str | None = None
     display_name: str = Field(alias='displayName')
     bio: str | None = None
 
@@ -24,7 +24,7 @@ class UserProfileUpdate(BaseModel):
 
 class UserNotification(BaseModel):
     id: UUID
-    username: str
+    username: str | None = None
     display_name: str = Field(alias='displayName')
     avatar: str
 

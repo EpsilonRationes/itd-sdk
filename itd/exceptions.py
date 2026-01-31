@@ -23,21 +23,29 @@ class InvalidOldPassword(Exception):
     def __str__(self):
         return 'Old password is incorrect'
 
-class UserNotFound(Exception):
+class NotFound(Exception):
+    def __init__(self, obj):
+        self.obj = obj
     def __str__(self):
-        return 'User not found'
+        return f'{self.obj} not found'
 
 class UserBanned(Exception):
     def __str__(self):
         return 'User banned'
 
-class InvalidProfileData(Exception):
+class ValidationError(Exception):
     def __init__(self, name: str, value: str):
         self.name = name
         self.value = value
     def __str__(self):
-        return f'Invalid update profile data {self.name}: "{self.value}"'
+        return f'Failed validation on {self.name}: "{self.value}"'
 
 class PendingRequestExists(Exception):
     def __str__(self):
         return 'Pending verifiaction request already exists'
+
+class RateLimitExceeded(Exception):
+    def __init__(self, retry_after: int):
+        self.retry_after = retry_after
+    def __str__(self):
+        return f'Rate limit exceeded - too much requests. Retry after {self.retry_after} seconds'

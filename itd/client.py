@@ -6,7 +6,7 @@ from requests.exceptions import HTTPError
 
 from itd.routes.users import get_user, update_profile, follow, unfollow, get_followers, get_following, update_privacy
 from itd.routes.etc import get_top_clans, get_who_to_follow, get_platform_status
-from itd.routes.comments import get_comments, add_comment, delete_comment, like_comment, unlike_comment
+from itd.routes.comments import get_comments, add_comment, delete_comment, like_comment, unlike_comment, add_reply_comment
 from itd.routes.hashtags import get_hastags, get_posts_by_hastag
 from itd.routes.notifications import get_notifications, mark_as_read, mark_all_as_read, get_unread_notifications_count
 from itd.routes.posts import create_post, get_posts, get_post, edit_post, delete_post, pin_post, repost, view_post, get_liked_posts
@@ -16,13 +16,14 @@ from itd.routes.files import upload_file
 from itd.routes.auth import refresh_token, change_password, logout
 from itd.routes.verification import verificate, get_verification_status
 
+from itd.models.comment import Comment
 from itd.models.clan import Clan
 from itd.models.user import User, UserProfileUpdate, UserPrivacy, UserFollower, UserWhoToFollow
 from itd.models.pagination import Pagination
 from itd.models.verification import Verification, VerificationStatus
 
 from itd.request import set_cookies
-from itd.exceptions import NoCookie, NoAuthData, SamePassword, InvalidOldPassword, UserNotFound, InvalidProfileData, UserBanned, PendingRequestExists
+from itd.exceptions import NoCookie, NoAuthData, SamePassword, InvalidOldPassword, NotFound, ValidationError, UserBanned, PendingRequestExists
 
 
 def refresh_on_error(func):
@@ -122,7 +123,7 @@ class Client:
             username (str): username или "me"
 
         Raises:
-            UserNotFound: Пользователь не найден
+            NotFound: Пользователь не найден
             UserBanned: Пользователь заблокирован
 
         Returns:
@@ -130,7 +131,7 @@ class Client:
         """
         res = get_user(self.token, username)
         if res.json().get('error', {}).get('code') == 'NOT_FOUND':
-            raise UserNotFound()
+            raise NotFound('User')
         if res.json().get('error', {}).get('code') == 'USER_BLOCKED':
             raise UserBanned()
         res.raise_for_status()
@@ -157,14 +158,14 @@ class Client:
             banner_id (UUID | None, optional): UUID баннера. Defaults to None.
 
         Raises:
-            InvalidProfileData: Неправильные данные (валидация не прошла)
+            ValidationError: Ошибка валидации
 
         Returns:
             UserProfileUpdate: Обновленный профиль
         """
         res = update_profile(self.token, bio, display_name, username, banner_id)
         if res.status_code == 422 and 'found' in res.json():
-            raise InvalidProfileData(*list(res.json()['found'].items())[0])
+            raise ValidationError(*list(res.json()['found'].items())[0])
         res.raise_for_status()
 
         return UserProfileUpdate.model_validate(res.json())
@@ -193,14 +194,14 @@ class Client:
             username (str): username
 
         Raises:
-            UserNotFound: Пользователь не найден
+            NotFound: Пользователь не найден
 
         Returns:
             int: Число подписчиков после подписки
         """
         res = follow(self.token, username)
         if res.json().get('error', {}).get('code') == 'NOT_FOUND':
-            raise UserNotFound()
+            raise NotFound('User')
         res.raise_for_status()
 
         return res.json()['followersCount']
@@ -213,14 +214,14 @@ class Client:
             username (str): username
 
         Raises:
-            UserNotFound: Пользователь не найден
+            NotFound: Пользователь не найден
 
         Returns:
             int: Число подписчиков после отписки
         """
         res = unfollow(self.token, username)
         if res.json().get('error', {}).get('code') == 'NOT_FOUND':
-            raise UserNotFound()
+            raise NotFound('User')
         res.raise_for_status()
 
         return res.json()['followersCount']
@@ -235,7 +236,7 @@ class Client:
             page (int, optional): Страница (при дозагрузке, увеличивайте на 1). Defaults to 1.
 
         Raises:
-            UserNotFound: Пользователь не найден
+            NotFound: Пользователь не найден
 
         Returns:
             list[UserFollower]: Список подписчиков
@@ -243,7 +244,7 @@ class Client:
         """
         res = get_followers(self.token, username, limit, page)
         if res.json().get('error', {}).get('code') == 'NOT_FOUND':
-            raise UserNotFound()
+            raise NotFound('User')
         res.raise_for_status()
 
         return [UserFollower.model_validate(user) for user in res.json()['data']['users']], Pagination.model_validate(res.json()['data']['pagination'])
@@ -258,7 +259,7 @@ class Client:
             page (int, optional): Страница (при дозагрузке, увеличивайте на 1). Defaults to 1.
 
         Raises:
-            UserNotFound: Пользователь не найден
+            NotFound: Пользователь не найден
 
         Returns:
             list[UserFollower]: Список подписок
@@ -266,7 +267,7 @@ class Client:
         """
         res = get_following(self.token, username, limit, page)
         if res.json().get('error', {}).get('code') == 'NOT_FOUND':
-            raise UserNotFound()
+            raise NotFound('User')
         res.raise_for_status()
 
         return [UserFollower.model_validate(user) for user in res.json()['data']['users']], Pagination.model_validate(res.json()['data']['pagination'])
@@ -274,6 +275,17 @@ class Client:
 
     @refresh_on_error
     def verificate(self, file_url: str) -> Verification:
+        """Отправить запрос на верификацию
+
+        Args:
+            file_url (str): Ссылка на видео
+
+        Raises:
+            PendingRequestExists: Запрос уже отправлен
+
+        Returns:
+            Verification: Верификация
+        """
         res = verificate(self.token, file_url)
         if res.json().get('error', {}).get('code') == 'PENDING_REQUEST_EXISTS':
             raise PendingRequestExists()
@@ -283,6 +295,11 @@ class Client:
 
     @refresh_on_error
     def get_verification_status(self) -> VerificationStatus:
+        """Получить статус верификации
+
+        Returns:
+            VerificationStatus: Верификация
+        """
         res = get_verification_status(self.token)
         res.raise_for_status()
 
@@ -291,6 +308,11 @@ class Client:
 
     @refresh_on_error
     def get_who_to_follow(self) -> list[UserWhoToFollow]:
+        """Получить список популярнык пользователей (кого читать)
+
+        Returns:
+            list[UserWhoToFollow]: Список пользователей
+        """
         res = get_who_to_follow(self.token)
         res.raise_for_status()
 
@@ -298,34 +320,101 @@ class Client:
 
     @refresh_on_error
     def get_top_clans(self) -> list[Clan]:
+        """Получить топ кланов
+
+        Returns:
+            list[Clan]: Топ кланов
+        """
         res = get_top_clans(self.token)
         res.raise_for_status()
 
         return [Clan.model_validate(clan) for clan in res.json()['clans']]
 
     @refresh_on_error
-    def get_platform_status(self) -> dict:
-        return get_platform_status(self.token)
+    def get_platform_status(self) -> bool:
+        """Получить статус платформы
+
+        Returns:
+            bool: read only
+        """
+        res = get_platform_status(self.token)
+        res.raise_for_status()
+
+        return res.json()['readOnly']
 
 
     @refresh_on_error
-    def add_comment(self, post_id: str, content: str, reply_comment_id: str | None = None):
-        return add_comment(self.token, post_id, content, reply_comment_id)
+    def add_comment(self, post_id: UUID, content: str) -> Comment:
+        """Добавить комментарий
+
+        Args:
+            post_id (str): UUID поста
+            content (str): Содержание
+            reply_comment_id (UUID | None, optional): ID коммента для ответа. Defaults to None.
+
+        Raises:
+            ValidationError: Ошибка валидации
+
+        Returns:
+            Comment: Комментарий
+        """
+        res = add_comment(self.token, post_id, content)
+        if res.status_code == 422 and 'found' in res.json():
+            raise ValidationError(*list(res.json()['found'].items())[0])
+        if res.json().get('error', {}).get('code') == 'NOT_FOUND':
+            raise NotFound('Post')
+        res.raise_for_status()
+
+        return Comment.model_validate(res.json())
+
 
     @refresh_on_error
-    def get_comments(self, post_id: str, limit: int = 20, cursor: int = 0, sort: str = 'popular'):
-        return get_comments(self.token, post_id, limit, cursor, sort)
+    def add_reply_comment(self, comment_id: UUID, content: str, author_id: UUID) -> Comment:
+        """Добавить ответный комментарий
+
+        Args:
+            comment_id (str): UUID комментария
+            content (str): Содержание
+            author_id (UUID | None, optional): ID пользователя, отправившего комментарий. Defaults to None.
+
+        Raises:
+            ValidationError: Ошибка валидации
+
+        Returns:
+            Comment: Комментарий
+        """
+        res = add_reply_comment(self.token, comment_id, content, author_id)
+        if res.status_code == 500 and 'Failed query' in res.text:
+            raise NotFound('User')
+        if res.status_code == 422 and 'found' in res.json():
+            raise ValidationError(*list(res.json()['found'].items())[0])
+        if res.json().get('error', {}).get('code') == 'NOT_FOUND':
+            raise NotFound('Comment')
+        res.raise_for_status()
+
+        return Comment.model_validate(res.json())
+
 
     @refresh_on_error
-    def like_comment(self, id: str):
+    def get_comments(self, post_id: UUID, limit: int = 20, cursor: int = 0, sort: str = 'popular') -> tuple[list[Comment], Pagination]:
+        res = get_comments(self.token, post_id, limit, cursor, sort)
+        if res.json().get('error', {}).get('code') == 'NOT_FOUND':
+            raise NotFound('Post')
+        res.raise_for_status()
+        data = res.json()['data']
+
+        return [Comment.model_validate(comment) for comment in data['comments']], Pagination(page=(cursor // limit) or 1, limit=limit, total=data['total'], hasMore=data['hasMore'])
+
+    @refresh_on_error
+    def like_comment(self, id: UUID):
         return like_comment(self.token, id)
 
     @refresh_on_error
-    def unlike_comment(self, id: str):
+    def unlike_comment(self, id: UUID):
         return unlike_comment(self.token, id)
 
     @refresh_on_error
-    def delete_comment(self, id: str):
+    def delete_comment(self, id: UUID):
         return delete_comment(self.token, id)
 
 
@@ -426,6 +515,6 @@ class Client:
     def upload_file(self, name: str, data: BufferedReader):
         return upload_file(self.token, name, data)
 
-    def update_banner(self, name: str):
+    def update_banner(self, name: str) -> UserProfileUpdate:
         id = self.upload_file(name, cast(BufferedReader, open(name, 'rb')))['id']
         return self.update_profile(banner_id=id)

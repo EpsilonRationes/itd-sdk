@@ -23,3 +23,7 @@ class ReportTargetReason(Enum):
     ADULT = 'adult' # 18+
     FRAUD = 'fraud' # обман\мошенничество
     OTHER = 'other' # другое
+
+class AttachType(Enum):
+    AUDIO = 'audio'
+    IMAGE = 'image'

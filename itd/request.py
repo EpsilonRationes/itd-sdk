@@ -2,7 +2,7 @@ from _io import BufferedReader
 
 from requests import Session
 
-from itd.exceptions import InvalidToken, InvalidCookie
+from itd.exceptions import InvalidToken, InvalidCookie, RateLimitExceeded
 
 s = Session()
 
@@ -30,6 +30,9 @@ def fetch(token: str, method: str, url: str, params: dict = {}, files: dict[str,
         res = s.get(base, timeout=120 if files else 20, params=params, headers=headers)
     else:
         res = s.request(method.upper(), base, timeout=20, json=params, headers=headers, files=files)
+
+    if res.json().get('error', {}).get('code') == 'RATE_LIMIT_EXCEEDED':
+        raise RateLimitExceeded(res.json()['error'].get('retryAfter', 0))
 
     print(res.text)
     return res
@@ -72,6 +75,8 @@ def auth_fetch(cookies: str, method: str, url: str, params: dict = {}, token: st
     # print(res.text)
     if res.text == 'UNAUTHORIZED':
         raise InvalidToken()
+    if res.json().get('error', {}).get('code') == 'RATE_LIMIT_EXCEEDED':
+        raise RateLimitExceeded(res.json()['error'].get('retryAfter', 0))
     if res.json().get('error', {}).get('code') in ('SESSION_NOT_FOUND', 'REFRESH_TOKEN_MISSING'):
         raise InvalidCookie()
 

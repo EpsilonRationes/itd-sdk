@@ -12,15 +12,18 @@ class File(BaseModel):
     size: int
 
 
-class Attach(BaseModel):
+class PostAttach(BaseModel):
     id: UUID
     type: AttachType = AttachType.IMAGE
     url: str
     thumbnail_url: str | None = Field(None, alias='thumbnailUrl')
+    width: int | None = None
+    height: int | None = None
+
+
+class Attach(PostAttach):
     filename: str
     mime_type: str = Field(alias='mimeType')
     size: int
-    width: int | None = None
-    height: int | None = None
     duration: int | None = None
     order: int = 0

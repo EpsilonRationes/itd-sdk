@@ -3,15 +3,10 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from itd.models.user import UserPost
-from itd.models.file import Attach
-
 
 class TextObject(BaseModel):
     id: UUID
     content: str
-    author: UserPost
-    attachments: list[Attach] = []
 
     created_at: datetime = Field(alias='createdAt')
 

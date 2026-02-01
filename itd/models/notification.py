@@ -11,7 +11,7 @@ class Notification(BaseModel):
     type: NotificationType
 
     target_type: NotificationTargetType | None = Field(None, alias='targetType') # none - follows, other - NotificationTragetType.POST
-    target_id: int | None = Field(None, alias='targetId') # none - follows
+    target_id: UUID | None = Field(None, alias='targetId') # none - follows
 
     preview: str | None = None # follow - none, comment/reply - content, repost - original post content, like - post content, wall_post - wall post content
 

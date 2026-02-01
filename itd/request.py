@@ -1,6 +1,7 @@
 from _io import BufferedReader
 
 from requests import Session
+from requests.exceptions import JSONDecodeError
 
 from itd.exceptions import InvalidToken, InvalidCookie, RateLimitExceeded
 
@@ -29,10 +30,13 @@ def fetch(token: str, method: str, url: str, params: dict = {}, files: dict[str,
     if method == "get":
         res = s.get(base, timeout=120 if files else 20, params=params, headers=headers)
     else:
-        res = s.request(method.upper(), base, timeout=20, json=params, headers=headers, files=files)
+        res = s.request(method.upper(), base, timeout=120 if files else 20, json=params, headers=headers, files=files)
 
-    if res.json().get('error', {}).get('code') == 'RATE_LIMIT_EXCEEDED':
-        raise RateLimitExceeded(res.json()['error'].get('retryAfter', 0))
+    try:
+        if res.json().get('error', {}).get('code') == 'RATE_LIMIT_EXCEEDED':
+            raise RateLimitExceeded(res.json()['error'].get('retryAfter', 0))
+    except JSONDecodeError:
+        pass
 
     print(res.text)
     return res
@@ -75,9 +79,12 @@ def auth_fetch(cookies: str, method: str, url: str, params: dict = {}, token: st
     # print(res.text)
     if res.text == 'UNAUTHORIZED':
         raise InvalidToken()
-    if res.json().get('error', {}).get('code') == 'RATE_LIMIT_EXCEEDED':
-        raise RateLimitExceeded(res.json()['error'].get('retryAfter', 0))
-    if res.json().get('error', {}).get('code') in ('SESSION_NOT_FOUND', 'REFRESH_TOKEN_MISSING'):
-        raise InvalidCookie()
+    try:
+        if res.json().get('error', {}).get('code') == 'RATE_LIMIT_EXCEEDED':
+            raise RateLimitExceeded(res.json()['error'].get('retryAfter', 0))
+        if res.json().get('error', {}).get('code') in ('SESSION_NOT_FOUND', 'REFRESH_TOKEN_MISSING'):
+            raise InvalidCookie()
+    except JSONDecodeError:
+        pass
 
     return res

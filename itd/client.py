@@ -2,7 +2,7 @@ from uuid import UUID
 from _io import BufferedReader
 from typing import cast
 
-from requests.exceptions import HTTPError
+from requests.exceptions import HTTPError, ConnectionError
 
 from itd.routes.users import get_user, update_profile, follow, unfollow, get_followers, get_following, update_privacy
 from itd.routes.etc import get_top_clans, get_who_to_follow, get_platform_status
@@ -17,13 +17,16 @@ from itd.routes.auth import refresh_token, change_password, logout
 from itd.routes.verification import verificate, get_verification_status
 
 from itd.models.comment import Comment
+from itd.models.notification import Notification
+from itd.models.post import Post, NewPost
 from itd.models.clan import Clan
+from itd.models.hashtag import Hashtag
 from itd.models.user import User, UserProfileUpdate, UserPrivacy, UserFollower, UserWhoToFollow
 from itd.models.pagination import Pagination
 from itd.models.verification import Verification, VerificationStatus
 
 from itd.request import set_cookies
-from itd.exceptions import NoCookie, NoAuthData, SamePassword, InvalidOldPassword, NotFound, ValidationError, UserBanned, PendingRequestExists
+from itd.exceptions import NoCookie, NoAuthData, SamePassword, InvalidOldPassword, NotFound, ValidationError, UserBanned, PendingRequestExists, Forbidden, UsernameTaken
 
 
 def refresh_on_error(func):
@@ -35,6 +38,9 @@ def refresh_on_error(func):
                 self.refresh_auth()
                 return func(self, *args, **kwargs)
             raise e
+        except ConnectionError:
+            self.refresh_auth()
+            return func(self, *args, **kwargs)
     return wrapper
 
 
@@ -166,6 +172,8 @@ class Client:
         res = update_profile(self.token, bio, display_name, username, banner_id)
         if res.status_code == 422 and 'found' in res.json():
             raise ValidationError(*list(res.json()['found'].items())[0])
+        if res.json().get('error', {}).get('code') == 'USERNAME_TAKEN':
+            raise UsernameTaken()
         res.raise_for_status()
 
         return UserProfileUpdate.model_validate(res.json())
@@ -354,6 +362,7 @@ class Client:
 
         Raises:
             ValidationError: Ошибка валидации
+            NotFound: Пост не найден
 
         Returns:
             Comment: Комментарий
@@ -379,6 +388,7 @@ class Client:
 
         Raises:
             ValidationError: Ошибка валидации
+            NotFound: Пользователь или комментарий не найден
 
         Returns:
             Comment: Комментарий
@@ -397,56 +407,191 @@ class Client:
 
     @refresh_on_error
     def get_comments(self, post_id: UUID, limit: int = 20, cursor: int = 0, sort: str = 'popular') -> tuple[list[Comment], Pagination]:
+        """Получить список комментариев
+
+        Args:
+            post_id (UUID): UUID поста
+            limit (int, optional): Лимит. Defaults to 20.
+            cursor (int, optional): Курсор (сколько пропустить). Defaults to 0.
+            sort (str, optional): Сортировка. Defaults to 'popular'.
+
+        Raises:
+            NotFound: Пост не найден
+
+        Returns:
+            list[Comment]: Список комментариев
+            Pagination: Пагинация
+        """
         res = get_comments(self.token, post_id, limit, cursor, sort)
         if res.json().get('error', {}).get('code') == 'NOT_FOUND':
             raise NotFound('Post')
         res.raise_for_status()
         data = res.json()['data']
 
-        return [Comment.model_validate(comment) for comment in data['comments']], Pagination(page=(cursor // limit) or 1, limit=limit, total=data['total'], hasMore=data['hasMore'])
+        return [Comment.model_validate(comment) for comment in data['comments']], Pagination(page=(cursor // limit) or 1, limit=limit, total=data['total'], hasMore=data['hasMore'], nextCursor=None)
 
     @refresh_on_error
-    def like_comment(self, id: UUID):
-        return like_comment(self.token, id)
+    def like_comment(self, id: UUID) -> int:
+        """Лайкнуть комментарий
+
+        Args:
+            id (UUID): UUID комментария
+
+        Raises:
+            NotFound: Комментарий не найден
+
+        Returns:
+            int: Количество лайков
+        """
+        res = like_comment(self.token, id)
+        if res.json().get('error', {}).get('code') == 'NOT_FOUND':
+            raise NotFound('Comment')
+        res.raise_for_status()
+
+        return res.json()['likesCount']
 
     @refresh_on_error
-    def unlike_comment(self, id: UUID):
-        return unlike_comment(self.token, id)
+    def unlike_comment(self, id: UUID) -> int:
+        """Убрать лайк с комментария
+
+        Args:
+            id (UUID): UUID комментария
+
+        Raises:
+            NotFound: Комментарий не найден
+
+        Returns:
+            int: Количество лайков
+        """
+        res = unlike_comment(self.token, id)
+        if res.json().get('error', {}).get('code') == 'NOT_FOUND':
+            raise NotFound('Comment')
+        res.raise_for_status()
+
+        return res.json()['likesCount']
 
     @refresh_on_error
-    def delete_comment(self, id: UUID):
-        return delete_comment(self.token, id)
+    def delete_comment(self, id: UUID) -> None:
+        """Удалить комментарий
+
+        Args:
+            id (UUID): UUID комментария
+
+        Raises:
+            NotFound: Комментарий не найден
+            Forbidden: Нет прав на удаление
+        """
+        res = delete_comment(self.token, id)
+        if res.status_code == 204:
+            return
+        if res.json().get('error', {}).get('code') == 'NOT_FOUND':
+            raise NotFound('Comment')
+        if res.json().get('error', {}).get('code') == 'FORBIDDEN':
+            raise Forbidden('delete comment')
+        res.raise_for_status()
 
 
     @refresh_on_error
-    def get_hastags(self, limit: int = 10):
-        return get_hastags(self.token, limit)
+    def get_hastags(self, limit: int = 10) -> list[Hashtag]:
+        """Получить список популярных хэштэгов
+
+        Args:
+            limit (int, optional): Лимит. Defaults to 10.
+
+        Returns:
+            list[Hashtag]: Список хэштэгов
+        """
+        res = get_hastags(self.token, limit)
+        res.raise_for_status()
+
+        return [Hashtag.model_validate(hashtag) for hashtag in res.json()['data']['hashtags']]
 
     @refresh_on_error
-    def get_posts_by_hashtag(self, hashtag: str, limit: int = 20, cursor: int = 0):
-        return get_posts_by_hastag(self.token, hashtag, limit, cursor)
+    def get_posts_by_hashtag(self, hashtag: str, limit: int = 20, cursor: UUID | None = None) -> tuple[Hashtag | None, list[Post], Pagination]:
+        """Получить посты по хэштэгу
+
+        Args:
+            hashtag (str): Хэштэг (без #)
+            limit (int, optional): Лимит. Defaults to 20.
+            cursor (UUID | None, optional): Курсор (UUID последнего поста, после которого брать данные). Defaults to None.
+
+        Returns:
+            Hashtag | None: Хэштэг
+            list[Post]: Посты
+            Pagination: Пагинация
+        """
+        res = get_posts_by_hastag(self.token, hashtag, limit, cursor)
+        res.raise_for_status()
+        data = res.json()['data']
+
+        return Hashtag.model_validate(data['hashtag']), [Post.model_validate(post) for post in data['posts']], Pagination.model_validate(data['pagination'])
 
 
     @refresh_on_error
-    def get_notifications(self, limit: int = 20, cursor: int = 0, type: str | None = None):
-        return get_notifications(self.token, limit, cursor, type)
+    def get_notifications(self, limit: int = 20, offset: int = 0) -> tuple[list[Notification], Pagination]:
+        """Получить уведомления
+
+        Args:
+            limit (int, optional): Лимит. Defaults to 20.
+            offset (int, optional): Сдвиг. Defaults to 0.
+
+        Returns:
+            list[Notification]: Уведомления
+            Pagination: Пагинация
+        """
+        res = get_notifications(self.token, limit, offset)
+        res.raise_for_status()
+
+        return (
+            [Notification.model_validate(notification) for notification in res.json()['notifications']],
+            Pagination(page=(offset // limit) + 1, limit=limit, hasMore=res.json()['hasMore'], nextCursor=None)
+        )
 
     @refresh_on_error
-    def mark_as_read(self, id: str):
-        return mark_as_read(self.token, id)
+    def mark_as_read(self, id: UUID) -> bool:
+        """Прочитать уведомление
+
+        Args:
+            id (UUID): UUID уведомления
+
+        Returns:
+            bool: Успешно (False - уже прочитано)
+        """
+        res = mark_as_read(self.token, id)
+        res.raise_for_status()
+
+        return res.json()['success']
 
     @refresh_on_error
-    def mark_all_as_read(self):
-        return mark_all_as_read(self.token)
-
-    @refresh_on_error
-    def get_unread_notifications_count(self):
-        return get_unread_notifications_count(self.token)
+    def mark_all_as_read(self) -> None:
+        """Прочитать все уведомления"""
+        res = mark_all_as_read(self.token)
+        res.raise_for_status()
 
 
     @refresh_on_error
-    def create_post(self, content: str, wall_recipient_id: int | None = None, attach_ids: list[str] = []):
-        return create_post(self.token, content, wall_recipient_id, attach_ids)
+    def get_unread_notifications_count(self) -> int:
+        """Получить количество непрочитанных уведомлений
+
+        Returns:
+            int: Количество
+        """
+        res = get_unread_notifications_count(self.token)
+        res.raise_for_status()
+
+        return res.json()['count']
+
+
+    @refresh_on_error
+    def create_post(self, content: str, wall_recipient_id: UUID | None = None, attach_ids: list[UUID] = []) -> NewPost:
+        res = create_post(self.token, content, wall_recipient_id, attach_ids)
+        if res.json().get('error', {}).get('code') == 'NOT_FOUND':
+            raise NotFound('Wall recipient')
+        if res.status_code == 422 and 'found' in res.json():
+            raise ValidationError(*list(res.json()['found'].items())[0])
+        res.raise_for_status()
+
+        return NewPost.model_validate(res.json())
 
     @refresh_on_error
     def get_posts(self, username: str | None = None, limit: int = 20, cursor: int = 0, sort: str = '', tab: str = ''):
@@ -513,7 +658,7 @@ class Client:
 
     @refresh_on_error
     def upload_file(self, name: str, data: BufferedReader):
-        return upload_file(self.token, name, data)
+        return upload_file(self.token, name, data).json()
 
     def update_banner(self, name: str) -> UserProfileUpdate:
         id = self.upload_file(name, cast(BufferedReader, open(name, 'rb')))['id']

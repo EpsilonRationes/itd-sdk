@@ -19,20 +19,21 @@ class UserProfileUpdate(BaseModel):
 
     updated_at: datetime | None = Field(None, alias='updatedAt')
 
-    model_config = {'populate_by_name': True}
 
-
-class UserNotification(BaseModel):
-    id: UUID
+class UserNewPost(BaseModel):
     username: str | None = None
     display_name: str = Field(alias='displayName')
     avatar: str
 
-    model_config = {'populate_by_name': True}
-
-
-class UserPost(UserNotification):
     verified: bool = False
+
+
+class UserNotification(UserNewPost):
+    id: UUID
+
+
+class UserPost(UserNotification, UserNewPost):
+    pass
 
 
 class UserWhoToFollow(UserPost):

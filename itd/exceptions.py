@@ -49,3 +49,13 @@ class RateLimitExceeded(Exception):
         self.retry_after = retry_after
     def __str__(self):
         return f'Rate limit exceeded - too much requests. Retry after {self.retry_after} seconds'
+
+class Forbidden(Exception):
+    def __init__(self, action: str):
+        self.action = action
+    def __str__(self):
+        return f'Forbidden to {self.action}'
+
+class UsernameTaken(Exception):
+    def __str__(self):
+        return 'Username is already taken'

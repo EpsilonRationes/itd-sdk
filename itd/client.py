@@ -516,7 +516,7 @@ class Client:
         Returns:
             list[Hashtag]: Список хэштэгов
         """
-        return self.get_hashtags(10)
+        return self.get_hashtags(limit)
 
     @refresh_on_error
     def get_hashtags(self, limit: int = 10) -> list[Hashtag]:

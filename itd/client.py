@@ -1,3 +1,4 @@
+from warnings import deprecated
 from uuid import UUID
 from _io import BufferedReader
 from typing import cast
@@ -490,9 +491,21 @@ class Client:
             raise Forbidden('delete comment')
         res.raise_for_status()
 
-
+    @deprecated("get_hastags устарел используйте get_hashtags")
     @refresh_on_error
     def get_hastags(self, limit: int = 10) -> list[Hashtag]:
+        """Получить список популярных хэштэгов
+
+        Args:
+            limit (int, optional): Лимит. Defaults to 10.
+
+        Returns:
+            list[Hashtag]: Список хэштэгов
+        """
+        return self.get_hashtags(10)
+
+    @refresh_on_error
+    def get_hashtags(self, limit: int = 10) -> list[Hashtag]:
         """Получить список популярных хэштэгов
 
         Args:

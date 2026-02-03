@@ -15,7 +15,7 @@ from itd.routes.reports import report
 from itd.routes.search import search
 from itd.routes.files import upload_file
 from itd.routes.auth import refresh_token, change_password, logout
-from itd.routes.verification import verificate, get_verification_status
+from itd.routes.verification import verify, get_verification_status
 
 from itd.models.comment import Comment
 from itd.models.notification import Notification
@@ -310,7 +310,7 @@ class Client:
             Returns:
                 Verification: Верификация
             """
-        res = verificate(self.token, file_url)
+        res = verify(self.token, file_url)
         if res.json().get('error', {}).get('code') == 'PENDING_REQUEST_EXISTS':
             raise PendingRequestExists()
         res.raise_for_status()

@@ -7,13 +7,19 @@ class NoAuthData(Exception):
         return 'No auth data. Provide token or cookies'
 
 class InvalidCookie(Exception):
+    def __init__(self, code: str):
+        self.code = code
     def __str__(self):
-        return f'Invalid cookie data'
+        if self.code == 'SESSION_NOT_FOUND':
+            return f'Invalid cookie data: Session not found (incorrect refresh token)'
+        elif self.code == 'REFRESH_TOKEN_MISSING':
+            return f'Invalid cookie data: No refresh token'
+        # SESSION_REVOKED
+        return f'Invalid cookie data: Session revoked (logged out)'
 
 class InvalidToken(Exception):
     def __str__(self):
         return f'Invalid access token'
-
 
 class SamePassword(Exception):
     def __str__(self):
@@ -59,3 +65,11 @@ class Forbidden(Exception):
 class UsernameTaken(Exception):
     def __str__(self):
         return 'Username is already taken'
+
+class CantFollowYourself(Exception):
+    def __str__(self):
+        return 'Cannot follow yourself'
+
+class Unauthorized(Exception):
+    def __str__(self) -> str:
+        return 'Auth required - refresh token'

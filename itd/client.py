@@ -1,20 +1,21 @@
+from warnings import deprecated
 from uuid import UUID
 from _io import BufferedReader
 from typing import cast
 
-from requests.exceptions import HTTPError, ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 
 from itd.routes.users import get_user, update_profile, follow, unfollow, get_followers, get_following, update_privacy
 from itd.routes.etc import get_top_clans, get_who_to_follow, get_platform_status
 from itd.routes.comments import get_comments, add_comment, delete_comment, like_comment, unlike_comment, add_reply_comment
-from itd.routes.hashtags import get_hastags, get_posts_by_hastag
+from itd.routes.hashtags import get_hashtags, get_posts_by_hashtag
 from itd.routes.notifications import get_notifications, mark_as_read, mark_all_as_read, get_unread_notifications_count
 from itd.routes.posts import create_post, get_posts, get_post, edit_post, delete_post, pin_post, repost, view_post, get_liked_posts, restore_post, like_post, delete_like_post
 from itd.routes.reports import report
 from itd.routes.search import search
 from itd.routes.files import upload_file
 from itd.routes.auth import refresh_token, change_password, logout
-from itd.routes.verification import verificate, get_verification_status
+from itd.routes.verification import verify, get_verification_status
 
 from itd.models.comment import Comment
 from itd.models.notification import Notification
@@ -26,20 +27,18 @@ from itd.models.pagination import Pagination
 from itd.models.verification import Verification, VerificationStatus
 
 from itd.request import set_cookies
-from itd.exceptions import NoCookie, NoAuthData, SamePassword, InvalidOldPassword, NotFound, ValidationError, UserBanned, PendingRequestExists, Forbidden, UsernameTaken
+from itd.exceptions import NoCookie, NoAuthData, SamePassword, InvalidOldPassword, NotFound, ValidationError, UserBanned, PendingRequestExists, Forbidden, UsernameTaken, CantFollowYourself, Unauthorized
 
 
 def refresh_on_error(func):
     def wrapper(self, *args, **kwargs):
-        try:
-            return func(self, *args, **kwargs)
-        except HTTPError as e:
-            if '401' in str(e):
+        if self.cookies:
+            try:
+                return func(self, *args, **kwargs)
+            except (Unauthorized, ConnectionError, HTTPError):
                 self.refresh_auth()
                 return func(self, *args, **kwargs)
-            raise e
-        except ConnectionError:
-            self.refresh_auth()
+        else:
             return func(self, *args, **kwargs)
     return wrapper
 
@@ -80,7 +79,7 @@ class Client:
         """Смена пароля
 
         Args:
-            old (str): Страый пароль
+            old (str): Старый пароль
             new (str): Новый пароль
 
         Raises:
@@ -203,6 +202,7 @@ class Client:
 
         Raises:
             NotFound: Пользователь не найден
+            CantFollowYourself: Невозможно подписаться на самого себе
 
         Returns:
             int: Число подписчиков после подписки
@@ -210,6 +210,8 @@ class Client:
         res = follow(self.token, username)
         if res.json().get('error', {}).get('code') == 'NOT_FOUND':
             raise NotFound('User')
+        if res.json().get('error', {}).get('code') == 'VALIDATION_ERROR' and res.status_code == 400:
+            raise CantFollowYourself()
         res.raise_for_status()
 
         return res.json()['followersCount']
@@ -280,7 +282,7 @@ class Client:
 
         return [UserFollower.model_validate(user) for user in res.json()['data']['users']], Pagination.model_validate(res.json()['data']['pagination'])
 
-
+    @deprecated("verificate устарел используйте verify")
     @refresh_on_error
     def verificate(self, file_url: str) -> Verification:
         """Отправить запрос на верификацию
@@ -294,7 +296,22 @@ class Client:
         Returns:
             Verification: Верификация
         """
-        res = verificate(self.token, file_url)
+        return self.verify(file_url)
+
+    @refresh_on_error
+    def verify(self, file_url: str) -> Verification:
+        """Отправить запрос на верификацию
+
+            Args:
+                file_url (str): Ссылка на видео
+
+            Raises:
+                PendingRequestExists: Запрос уже отправлен
+
+            Returns:
+                Verification: Верификация
+            """
+        res = verify(self.token, file_url)
         if res.json().get('error', {}).get('code') == 'PENDING_REQUEST_EXISTS':
             raise PendingRequestExists()
         res.raise_for_status()
@@ -313,10 +330,9 @@ class Client:
 
         return VerificationStatus.model_validate(res.json())
 
-
     @refresh_on_error
     def get_who_to_follow(self) -> list[UserWhoToFollow]:
-        """Получить список популярнык пользователей (кого читать)
+        """Получить список популярных пользователей (кого читать)
 
         Returns:
             list[UserWhoToFollow]: Список пользователей
@@ -352,12 +368,13 @@ class Client:
 
 
     @refresh_on_error
-    def add_comment(self, post_id: UUID, content: str) -> Comment:
+    def add_comment(self, post_id: UUID, content: str, attachment_ids: list[UUID] = []) -> Comment:
         """Добавить комментарий
 
         Args:
             post_id (str): UUID поста
             content (str): Содержание
+            attachment_ids (list[UUID]): Список UUID прикреплённых файлов
             reply_comment_id (UUID | None, optional): ID коммента для ответа. Defaults to None.
 
         Raises:
@@ -367,7 +384,7 @@ class Client:
         Returns:
             Comment: Комментарий
         """
-        res = add_comment(self.token, post_id, content)
+        res = add_comment(self.token, post_id, content, attachment_ids)
         if res.status_code == 422 and 'found' in res.json():
             raise ValidationError(*list(res.json()['found'].items())[0])
         if res.json().get('error', {}).get('code') == 'NOT_FOUND':
@@ -378,13 +395,14 @@ class Client:
 
 
     @refresh_on_error
-    def add_reply_comment(self, comment_id: UUID, content: str, author_id: UUID) -> Comment:
+    def add_reply_comment(self, comment_id: UUID, content: str, author_id: UUID, attachment_ids: list[UUID] = []) -> Comment:
         """Добавить ответный комментарий
 
         Args:
             comment_id (str): UUID комментария
             content (str): Содержание
             author_id (UUID | None, optional): ID пользователя, отправившего комментарий. Defaults to None.
+            attachment_ids (list[UUID]): Список UUID прикреплённых файлов
 
         Raises:
             ValidationError: Ошибка валидации
@@ -393,7 +411,7 @@ class Client:
         Returns:
             Comment: Комментарий
         """
-        res = add_reply_comment(self.token, comment_id, content, author_id)
+        res = add_reply_comment(self.token, comment_id, content, author_id, attachment_ids)
         if res.status_code == 500 and 'Failed query' in res.text:
             raise NotFound('User')
         if res.status_code == 422 and 'found' in res.json():
@@ -490,7 +508,7 @@ class Client:
             raise Forbidden('delete comment')
         res.raise_for_status()
 
-
+    @deprecated("get_hastags устарел используйте get_hashtags")
     @refresh_on_error
     def get_hastags(self, limit: int = 10) -> list[Hashtag]:
         """Получить список популярных хэштэгов
@@ -501,7 +519,19 @@ class Client:
         Returns:
             list[Hashtag]: Список хэштэгов
         """
-        res = get_hastags(self.token, limit)
+        return self.get_hashtags(limit)
+
+    @refresh_on_error
+    def get_hashtags(self, limit: int = 10) -> list[Hashtag]:
+        """Получить список популярных хэштэгов
+
+        Args:
+            limit (int, optional): Лимит. Defaults to 10.
+
+        Returns:
+            list[Hashtag]: Список хэштэгов
+        """
+        res = get_hashtags(self.token, limit)
         res.raise_for_status()
 
         return [Hashtag.model_validate(hashtag) for hashtag in res.json()['data']['hashtags']]
@@ -520,7 +550,7 @@ class Client:
             list[Post]: Посты
             Pagination: Пагинация
         """
-        res = get_posts_by_hastag(self.token, hashtag, limit, cursor)
+        res = get_posts_by_hashtag(self.token, hashtag, limit, cursor)
         res.raise_for_status()
         data = res.json()['data']
 

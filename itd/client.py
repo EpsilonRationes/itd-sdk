@@ -790,6 +790,8 @@ class Client:
             NotFound: Пост не найден
         """
         res = view_post(self.token, id)
+        if res.status_code == 204:
+            return
         if res.json().get('error', {}).get('code') == 'NOT_FOUND':
             raise NotFound('Post')
         res.raise_for_status()

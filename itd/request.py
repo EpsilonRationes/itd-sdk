@@ -1,6 +1,9 @@
 from _io import BufferedReader
 
 from requests import Session
+from requests.exceptions import JSONDecodeError
+
+from itd.exceptions import InvalidToken, InvalidCookie, RateLimitExceeded, Unauthorized
 
 s = Session()
 
@@ -27,10 +30,20 @@ def fetch(token: str, method: str, url: str, params: dict = {}, files: dict[str,
     if method == "get":
         res = s.get(base, timeout=120 if files else 20, params=params, headers=headers)
     else:
-        res = s.request(method.upper(), base, timeout=20, json=params, headers=headers, files=files)
+        res = s.request(method.upper(), base, timeout=120 if files else 20, json=params, headers=headers, files=files)
 
-    res.raise_for_status()
-    return res.json()
+    try:
+        if res.json().get('error', {}).get('code') == 'RATE_LIMIT_EXCEEDED':
+            raise RateLimitExceeded(res.json()['error'].get('retryAfter', 0))
+        if res.json().get('error', {}).get('code') == 'UNAUTHORIZED':
+            raise Unauthorized()
+    except JSONDecodeError:
+        pass # todo
+
+    if not res.ok:
+        print(res.text)
+    return res
+
 
 def set_cookies(cookies: str):
     for cookie in cookies.split('; '):
@@ -65,5 +78,18 @@ def auth_fetch(cookies: str, method: str, url: str, params: dict = {}, token: st
         res = s.get(f'https://xn--d1ah4a.com/api/{url}', timeout=20, params=params, headers=headers)
     else:
         res = s.request(method, f'https://xn--d1ah4a.com/api/{url}', timeout=20, json=params, headers=headers)
-    res.raise_for_status()
-    return res.json()
+
+    # print(res.text)
+    if res.text == 'UNAUTHORIZED':
+        raise InvalidToken()
+    try:
+        if res.json().get('error', {}).get('code') == 'RATE_LIMIT_EXCEEDED':
+            raise RateLimitExceeded(res.json()['error'].get('retryAfter', 0))
+        if res.json().get('error', {}).get('code') in ('SESSION_NOT_FOUND', 'REFRESH_TOKEN_MISSING', 'SESSION_REVOKED', 'SESSION_EXPIRED'):
+            raise InvalidCookie(res.json()['error']['code'])
+        if res.json().get('error', {}).get('code') == 'UNAUTHORIZED':
+            raise Unauthorized()
+    except JSONDecodeError:
+        print('fail to parse json')
+
+    return res

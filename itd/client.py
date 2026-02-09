@@ -1,16 +1,19 @@
 # from warnings import deprecated
 from uuid import UUID
 from _io import BufferedReader
-from typing import cast
+from typing import cast, Iterator
 from datetime import datetime
+import json
+import time
 
 from requests.exceptions import ConnectionError, HTTPError
+from sseclient import SSEClient
 
 from itd.routes.users import get_user, update_profile, follow, unfollow, get_followers, get_following, update_privacy
 from itd.routes.etc import get_top_clans, get_who_to_follow, get_platform_status
 from itd.routes.comments import get_comments, add_comment, delete_comment, like_comment, unlike_comment, add_reply_comment, get_replies
 from itd.routes.hashtags import get_hashtags, get_posts_by_hashtag
-from itd.routes.notifications import get_notifications, mark_as_read, mark_all_as_read, get_unread_notifications_count
+from itd.routes.notifications import get_notifications, mark_as_read, mark_all_as_read, get_unread_notifications_count, stream_notifications
 from itd.routes.posts import create_post, get_posts, get_post, edit_post, delete_post, pin_post, repost, view_post, get_liked_posts, restore_post, like_post, unlike_post, get_user_posts
 from itd.routes.reports import report
 from itd.routes.search import search
@@ -30,6 +33,7 @@ from itd.models.verification import Verification, VerificationStatus
 from itd.models.report import NewReport
 from itd.models.file import File
 from itd.models.pin import Pin
+from itd.models.event import StreamConnect, StreamNotification
 
 from itd.enums import PostsTab, ReportTargetType, ReportTargetReason
 from itd.request import set_cookies
@@ -57,6 +61,7 @@ def refresh_on_error(func):
 class Client:
     def __init__(self, token: str | None = None, cookies: str | None = None):
         self.cookies = cookies
+        self._stream_active = False  # Флаг для остановки stream_notifications
 
         if token:
             self.token = token.replace('Bearer ', '')
@@ -1082,3 +1087,100 @@ class Client:
         res.raise_for_status()
 
         return res.json()['pin']
+
+    @refresh_on_error
+    def stream_notifications(self) -> Iterator[StreamConnect | StreamNotification]:
+        """Слушать SSE поток уведомлений
+        
+        Yields:
+            StreamConnect | StreamNotification: События подключения или уведомления
+            
+        Example:
+            ```python
+            from itd import ITDClient
+            
+            client = ITDClient(cookies='refresh_token=...')
+            
+            # Запуск прослушивания
+            for event in client.stream_notifications():
+                if isinstance(event, StreamConnect):
+                    print(f'Подключено: {event.user_id}')
+                else:
+                    print(f'Уведомление: {event.type} от {event.actor.username}')
+                    
+            # Остановка из другого потока или обработчика
+            # client.stop_stream()
+            ```
+        """
+        self._stream_active = True
+        
+        while self._stream_active:
+            try:
+                response = stream_notifications(self.token)
+                response.raise_for_status()
+                
+                client = SSEClient(response)
+                
+                for event in client.events():
+                    if not self._stream_active:
+                        response.close()
+                        return
+                        
+                    try:
+                        if not event.data or event.data.strip() == '':
+                            continue
+                            
+                        data = json.loads(event.data)
+                        
+                        if 'userId' in data and 'timestamp' in data and 'type' not in data:
+                            yield StreamConnect.model_validate(data)
+                        else:
+                            yield StreamNotification.model_validate(data)
+                            
+                    except json.JSONDecodeError:
+                        print(f'Не удалось распарсить сообщение: {event.data}')
+                        continue
+                    except Exception as e:
+                        print(f'Ошибка обработки события: {e}')
+                        continue
+                        
+            except Unauthorized:
+                if self.cookies and self._stream_active:
+                    print('Токен истек, обновляем...')
+                    self.refresh_auth()
+                    continue
+                else:
+                    raise
+            except Exception as e:
+                if not self._stream_active:
+                    return
+                print(f'Ошибка соединения: {e}, переподключение через 5 секунд...')
+                time.sleep(5)
+                continue
+    
+    def stop_stream(self):
+        """Остановить прослушивание SSE потока
+        
+        Example:
+            ```python
+            import threading
+            from itd import ITDClient
+            
+            client = ITDClient(cookies='refresh_token=...')
+            
+            # Запуск в отдельном потоке
+            def listen():
+                for event in client.stream_notifications():
+                    print(event)
+            
+            thread = threading.Thread(target=listen)
+            thread.start()
+            
+            # Остановка через 10 секунд
+            import time
+            time.sleep(10)
+            client.stop_stream()
+            thread.join()
+            ```
+        """
+        self._stream_active = False

@@ -47,6 +47,17 @@ def fetch(token: str, method: str, url: str, params: dict = {}, files: dict[str,
     return res
 
 
+def fetch_stream(token: str, url: str):
+    """Fetch для SSE streaming запросов"""
+    base = f'https://xn--d1ah4a.com/api/{url}'
+    headers = {
+        "Accept": "text/event-stream",
+        "Authorization": 'Bearer ' + token,
+        "Cache-Control": "no-cache"
+    }
+    return s.get(base, headers=headers, stream=True, timeout=None)
+
+
 def set_cookies(cookies: str):
     for cookie in cookies.split('; '):
         s.cookies.set(cookie.split('=')[0], cookie.split('=')[-1], path='/', domain='xn--d1ah4a.com.com')

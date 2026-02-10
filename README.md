@@ -23,7 +23,7 @@ print(c.get_me())
 > Берите куки из запроса /auth/refresh. В остальных запросах нету refresh_token
 > ![cookie](cookie-screen.png) -->
 
-## Получение cookies
+### Получение cookies
 
 Для получения access_token требуются cookies с `refresh_token`. Как их получить:
 
@@ -33,7 +33,7 @@ print(c.get_me())
 4. Обновите страницу
 5. Найдите запрос к `/auth/refresh`
 6. Скопируйте значение **Cookie** из Request Headers
-> Пример: `refresh_token=123123A67BCdEfGG; is_auth=1`
+> Пример: `refresh_token=123123A67BCdEfGG; is_auth=1`  
 > В cookies также могут присутствовать значения типа `__ddgX__` (DDoS-Guard cookies) или `_ym_XXXX` (`X` - любое число или буква). Они необязательные и их наличие не влияет на результат
 
 ![cookie](cookie-screen.png)
@@ -78,7 +78,7 @@ c.create_post('тест1') # создание постов
 # итд
 ```
 
-### SSE - прослушивание уведомлений в реальном времени
+<!-- ### SSE - прослушивание уведомлений в реальном времени
 
 ```python
 from itd import ITDClient, StreamConnect, StreamNotification
@@ -102,7 +102,7 @@ for event in c.stream_notifications():
 - `wall_post` - пост на вашей стене
 - `comment` - комментарий к посту
 - `reply` - ответ на комментарий
-- `repost` - репост вашего поста
+- `repost` - репост вашего поста -->
 
 ### Кастомные запросы
 
@@ -117,16 +117,9 @@ fetch(c.token, 'метод', 'эндпоинт', {'данные': 'данные'
 > [!NOTE]
 > `xn--d1ah4a.com` - punycode от "итд.com"
 
-## Планы
-
- - Форматированные сообщения об ошибках
- - Логирование (через logging)
- - Добавление ООП (отдеьные классы по типу User или Post вместо обычного JSON)
- - Голосовые сообщения
-
 
 ## Прочее
-Лицезия: [MIT](./LICENSE)
+Лицезия: [MIT](./LICENSE)  
 Идея (и часть эндпоинтов): https://github.com/FriceKa/ITD-SDK-js
  - По сути этот проект является реворком, просто на другом языке
 

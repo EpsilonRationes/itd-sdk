@@ -12,6 +12,6 @@ authors = [
 ]
 license = "MIT"
 dependencies = [
-  "requests", "pydantic"
+  "requests", "pydantic", "sseclient-py"
 ]
 requires-python = ">=3.9"

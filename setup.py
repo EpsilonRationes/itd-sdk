@@ -5,7 +5,7 @@ setup(
     version='1.1.0',
     packages=find_packages(),
     install_requires=[
-        'requests', 'pydantic'
+        'requests', 'pydantic', 'sseclient-py'
     ],
     python_requires=">=3.9"
 )

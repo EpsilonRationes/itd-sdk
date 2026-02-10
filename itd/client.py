@@ -2,8 +2,8 @@ from uuid import UUID
 from _io import BufferedReader
 from typing import cast, Iterator
 from datetime import datetime
-import json
-import time
+from json import JSONDecodeError, loads
+from time import sleep
 
 from requests.exceptions import ConnectionError, HTTPError
 from sseclient import SSEClient
@@ -1105,59 +1105,59 @@ class Client:
     @refresh_on_error
     def stream_notifications(self) -> Iterator[StreamConnect | StreamNotification]:
         """Слушать SSE поток уведомлений
-        
+
         Yields:
             StreamConnect | StreamNotification: События подключения или уведомления
-            
+
         Example:
             ```python
             from itd import ITDClient
-            
+
             client = ITDClient(cookies='refresh_token=...')
-            
+
             # Запуск прослушивания
             for event in client.stream_notifications():
                 if isinstance(event, StreamConnect):
                     print(f'Подключено: {event.user_id}')
                 else:
                     print(f'Уведомление: {event.type} от {event.actor.username}')
-                    
+
             # Остановка из другого потока или обработчика
             # client.stop_stream()
             ```
         """
         self._stream_active = True
-        
+
         while self._stream_active:
             try:
                 response = stream_notifications(self.token)
                 response.raise_for_status()
-                
+
                 client = SSEClient(response)
-                
+
                 for event in client.events():
                     if not self._stream_active:
                         response.close()
                         return
-                        
+
                     try:
                         if not event.data or event.data.strip() == '':
                             continue
-                            
-                        data = json.loads(event.data)
-                        
+
+                        data = loads(event.data)
+
                         if 'userId' in data and 'timestamp' in data and 'type' not in data:
                             yield StreamConnect.model_validate(data)
                         else:
                             yield StreamNotification.model_validate(data)
-                            
-                    except json.JSONDecodeError:
+
+                    except JSONDecodeError:
                         print(f'Не удалось распарсить сообщение: {event.data}')
                         continue
                     except Exception as e:
                         print(f'Ошибка обработки события: {e}')
                         continue
-                        
+
             except Unauthorized:
                 if self.cookies and self._stream_active:
                     print('Токен истек, обновляем...')
@@ -1169,27 +1169,27 @@ class Client:
                 if not self._stream_active:
                     return
                 print(f'Ошибка соединения: {e}, переподключение через 5 секунд...')
-                time.sleep(5)
+                sleep(5)
                 continue
-    
+
     def stop_stream(self):
         """Остановить прослушивание SSE потока
-        
+
         Example:
             ```python
             import threading
             from itd import ITDClient
-            
+
             client = ITDClient(cookies='refresh_token=...')
-            
+
             # Запуск в отдельном потоке
             def listen():
                 for event in client.stream_notifications():
                     print(event)
-            
+
             thread = threading.Thread(target=listen)
             thread.start()
-            
+
             # Остановка через 10 секунд
             import time
             time.sleep(10)
@@ -1197,4 +1197,5 @@ class Client:
             thread.join()
             ```
         """
+        print('stop event')
         self._stream_active = False
